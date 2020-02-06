@@ -1,6 +1,7 @@
 __author__ = 'Brian M Anderson'
 # Created on 12/30/2019
-from Dicom_RT_and_Images_to_Mask.Image_Array_And_Mask_From_Dicom_RT import Dicom_to_Imagestack, plot_scroll_Image, plt, np
+from Dicom_RT_and_Images_to_Mask.Image_Array_And_Mask_From_Dicom_RT import Dicom_to_Imagestack
+from Dicom_RT_and_Images_to_Mask.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt, np
 from skimage import morphology
 
 
@@ -20,10 +21,11 @@ def cartesian_to_polar(zxy):
     # ptsnew = np.hstack((xyz, np.empty(xyz.shape)))
     xy = zxy[:,2]**2 + zxy[:,1]**2
     polar_points[:,0] = np.sqrt(xy + zxy[:,0]**2)
-    polar_points[:,1] = np.arctan2(np.sqrt(xy), zxy[:,0])  # for elevation angle defined from Z-axis down
+    polar_points[:,1] = np.arctan2(np.sqrt(xy), zxy[:,0])  # for elevation angle defined from Z-axis down, from 0 to pi
     #ptsnew[:,4] = np.arctan2(xyz[:,2], np.sqrt(xy)) # for elevation angle defined from XY-plane up
+    #  The theta values are just repeats across the z axis, so don't bother with a large matrix conversion
     polar_points[:,2] = np.arctan2(zxy[:,2], zxy[:,1])
-    # polar_points[:, 2][polar_points[:, 2] < 0] += 2 * np.pi  # let them range +0 to +pi and -0 to -pi
+    # polar_points[:, 2][polar_points[:, 2] < 0] += 2 * np.pi  # range from 0 to 2 pi
     if reshape:
         polar_points = np.reshape(polar_points,input_shape)
     return polar_points
@@ -57,8 +59,7 @@ def create_distance_field(image,origin, spacing=(0.975,0.975,5.0)):
     return polar_coordinates
 
 
-def create_output_ray(centroid, ref_binary_image, spacing, margin=50, min_max=True, margin_rad=np.deg2rad(5),
-                      target_centroid=None):
+def create_output_ray(centroid, ref_binary_image, spacing, margin=100, margin_rad=np.deg2rad(5), target_centroid=None):
     labels = morphology.label(ref_binary_image, neighbors=4)  # Could have multiple recurrence sites
     output = np.zeros(ref_binary_image.shape)
     output = np.expand_dims(output, axis=-1)
@@ -80,17 +81,24 @@ def create_output_ray(centroid, ref_binary_image, spacing, margin=50, min_max=Tr
 
         Note: This will turn a star shape into a square which encompasses the star!
         '''
-        output[...,1] += define_cone(polar_cords, centroid, ref_binary_image, spacing, margin=margin, min_max=min_max,
+        k = np.zeros(output.shape[:-1])
+        int_centroid = [int(i) for i in centroid]
+        k[tuple(int_centroid)] = -5
+        k[labels==label_value] = polar_cords[...,1]
+        # output[..., 1] += define_cone(polar_cords, centroid, ref_binary_image, spacing,
+        #                               margin=margin, min_max=min_max,
+        #                               margin_rad=margin_rad)
+        output[..., 1] = define_cone(polar_cords, centroid, ref_binary_image, spacing, margin=margin,
                                      margin_rad=margin_rad)
         if target_centroid is not None:
             output[...,2] += define_cone(polar_cords, target_centroid, ref_binary_image, spacing, margin=margin,
-                                         min_max=min_max, margin_rad=margin_rad)
+                                         margin_rad=margin_rad)
     output[output>0] = 1
     return output
 
 
-def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurrence, spacing, margin=100, min_max=False,
-                margin_rad=np.deg2rad(5)):
+def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurrence, spacing, margin=100,
+                margin_rad=np.deg2rad(1)):
     '''
     :param polar_cords_base: polar coordinates from ablation_recurrence centroid to recurrence, come in [phi, theta]
     where theta ranges from 0 to pi and -0 to -pi
@@ -104,46 +112,37 @@ def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurren
     if polar_cords_base.shape[1] == 3:
         polar_cords_base = polar_cords_base[:,1:]
     cone_cords_base = create_distance_field(np.ones(liver_recurrence.shape),origin=centroid_of_ablation_recurrence,spacing=spacing)
-    cone_cords_base = np.round(cone_cords_base,3).astype('float16')
-    output = np.zeros(cone_cords_base.shape[0])
-    positive_polar_indexes = polar_cords_base[:,1] >= 0
-    negative_polar_indexes = polar_cords_base[:,1] <= 0
-    positive_cord_indexes = cone_cords_base[:,2] >= 0
-    negative_cord_indexes = cone_cords_base[:,2] <= 0
-    for polar_indxes, cord_indexes in zip([positive_polar_indexes, negative_polar_indexes],
-                                          [positive_cord_indexes,negative_cord_indexes]):
-        polar_cords = polar_cords_base[polar_indxes]
-        cone_cords = cone_cords_base[cord_indexes]
-        if not np.any(polar_cords) or not np.any(cone_cords):
-            continue
-        min_phi, max_phi, min_theta, max_theta = min(polar_cords[..., 0]), max(polar_cords[..., 0]), min(
-            polar_cords[..., 1]), max(polar_cords[..., 1])
-        min_phi, max_phi, min_theta, max_theta = min_phi - margin_rad, max_phi + margin_rad, min_theta - margin_rad, \
-                                                 max_theta + margin_rad
-        if min_max:
-            mask = np.zeros(output[cord_indexes].shape)
-            vals = np.where(
-                (cone_cords[:, 1] >= min_phi) & (cone_cords[:, 1] <= max_phi) & (cone_cords[:, 2] >= min_theta)
-                & (cone_cords[:, 2] <= max_theta))
-            mask[vals[0]] = 1
-            output[cord_indexes] = mask
-        else:
-            mask = np.zeros(output[cord_indexes].shape)
-            vals = np.where((cone_cords[:, 1] >= min_phi) & (cone_cords[:, 1] <= max_phi) & (cone_cords[:,0] < margin) &
-                            (cone_cords[:, 2] >= min_theta) & (cone_cords[:, 2] <= max_theta))
-            cone_cords_reduced = cone_cords[vals[0]][:,1:]
-            del cone_cords
-            difference = np.abs(cone_cords_reduced[:,None] - polar_cords)
-            del polar_cords
-            min_dif_indexes = np.argmin(np.sum(difference,axis=2),axis=1)
-            min_dif = difference[np.arange(difference.shape[0]),min_dif_indexes,:]
-            del min_dif_indexes
-            dif_vals = np.where((min_dif[:,0]<=margin_rad)&(min_dif[:,1]<=margin_rad)) # Allow wiggle
-            mask[vals[0][dif_vals[0]]] = 1
-            output[cord_indexes] = mask
-            del dif_vals
-        del vals
-    output = np.reshape(output,liver_recurrence.shape) # This is now a cone including the recurrence site
+    cone_cords_base_reshaped = np.reshape(cone_cords_base, newshape=liver_recurrence.shape+(3,))
+    theta_values = cone_cords_base_reshaped[0,...,2]  # Thetas are just repeated
+    output = np.zeros(theta_values.shape)
+    '''
+    Can reduce size of search by looking at min margin 2D
+    '''
+    min_margin = np.min(cone_cords_base_reshaped[..., 0], axis=0)
+    min_margin_indexes = np.where(min_margin <= margin)
+    theta_values = theta_values[min_margin_indexes]
+    '''
+    Mask where potential theta values are
+    '''
+    difference = np.min(np.abs(theta_values[:,None] - polar_cords_base[:,1]),axis=-1)
+    within_theta_mask = difference <= margin_rad
+    output[min_margin_indexes] = within_theta_mask
+    output = np.repeat(output[None,...],liver_recurrence.shape[0],axis=0)
+    '''
+    Then mask to be within the margin in 3D sense
+    '''
+    outside_margin_indexes = np.where(cone_cords_base_reshaped[...,0]>margin)
+    output[outside_margin_indexes] = 0
+    '''
+    Now, make sure it falls within phi range
+    '''
+    mask_indexes = np.where(output == 1)
+    cone_cords_base = cone_cords_base_reshaped[mask_indexes]
+
+    phi_values = cone_cords_base[...,1]
+    difference = np.min(np.abs(phi_values.flatten()[:, None] - polar_cords_base[:, 0]), axis=-1)
+    within_phi_mask = difference <= margin_rad
+    output[mask_indexes] = within_phi_mask
     return output
 
 
