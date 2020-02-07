@@ -18,6 +18,6 @@ cross_base = mask[...,2]
 centroid_of_ablation_recurrence = np.asarray(center_of_mass(ablation_base))
 spacing = recurrence_reader.annotation_handle.GetSpacing()
 output = create_output_ray(centroid_of_ablation_recurrence, spacing=spacing, ref_binary_image=cross_base,
-                           margin_rad=np.deg2rad(0), margin=100)
+                           margin_rad=np.deg2rad(2), margin=100)
 recurrence_reader.with_annotations(output, output_dir=os.path.join(images_path, 'new_RT'),
                                    ROI_Names=['cone_cross_fixed'])

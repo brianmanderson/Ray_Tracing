@@ -111,8 +111,8 @@ def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurren
     polar_cords_base = polar_cords_base.astype('float16')
     if polar_cords_base.shape[1] == 3:
         polar_cords_base = polar_cords_base[:,1:]
-    cone_cords_base = create_distance_field(np.ones(liver_recurrence.shape),origin=centroid_of_ablation_recurrence,spacing=spacing)
-    cone_cords_base_reshaped = np.reshape(cone_cords_base, newshape=liver_recurrence.shape+(3,))
+    cone_cords_base_reshaped = create_distance_field(np.ones(liver_recurrence.shape),origin=centroid_of_ablation_recurrence,spacing=spacing)
+    cone_cords_base_reshaped = np.reshape(cone_cords_base_reshaped, newshape=liver_recurrence.shape+(3,))
     theta_values = cone_cords_base_reshaped[0,...,2]  # Thetas are just repeated
     output = np.zeros(theta_values.shape)
     '''
@@ -131,18 +131,34 @@ def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurren
     '''
     Then mask to be within the margin in 3D sense
     '''
-    outside_margin_indexes = np.where(cone_cords_base_reshaped[...,0]>margin)
+    outside_margin_indexes = np.where(cone_cords_base_reshaped[...,0] > margin)
     output[outside_margin_indexes] = 0
     '''
     Now, make sure it falls within phi range
     '''
     mask_indexes = np.where(output == 1)
-    cone_cords_base = cone_cords_base_reshaped[mask_indexes]
 
-    phi_values = cone_cords_base[...,1]
-    difference = np.min(np.abs(phi_values.flatten()[:, None] - polar_cords_base[:, 0]), axis=-1)
+    phi_values = cone_cords_base_reshaped[mask_indexes][...,1]
+    phi_differences = np.abs(phi_values.flatten()[:, None] - polar_cords_base[:, 0])
+    difference = np.min(phi_differences, axis=-1)
     within_phi_mask = difference <= margin_rad
-    output[mask_indexes] = within_phi_mask
+    min_max_only = False
+    if not min_max_only:
+        theta_values_cone = cone_cords_base_reshaped[mask_indexes][within_phi_mask][...,2]
+        theta_differences_in_mask = np.abs(theta_values_cone[:, None] - polar_cords_base[:, 1])
+        del polar_cords_base, theta_values_cone
+        phi_differences_in_mask = phi_differences[within_phi_mask]
+        summed_difference = np.sqrt(np.square(phi_differences_in_mask) + np.square(theta_differences_in_mask))
+        del phi_differences_in_mask
+        min_dif = np.min(summed_difference,axis=1)
+        del summed_difference
+        within_phi_and_theta = min_dif <= margin_rad
+        mask_vals = np.zeros(within_phi_mask.shape)
+        mask_vals[within_phi_mask] = within_phi_and_theta
+        output[mask_indexes] = mask_vals
+    else:
+        output[mask_indexes] = within_phi_mask
+
     return output
 
 
