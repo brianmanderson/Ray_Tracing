@@ -59,7 +59,8 @@ def create_distance_field(image,origin, spacing=(0.975,0.975,5.0)):
     return polar_coordinates
 
 
-def create_output_ray(centroid, ref_binary_image, spacing, margin=100, margin_rad=np.deg2rad(5), target_centroid=None):
+def create_output_ray(centroid, ref_binary_image, spacing, margin=100, margin_rad=np.deg2rad(5), target_centroid=None,
+                      min_max_only=False):
     labels = morphology.label(ref_binary_image, neighbors=4)  # Could have multiple recurrence sites
     output = np.zeros(ref_binary_image.shape)
     output = np.expand_dims(output, axis=-1)
@@ -89,16 +90,16 @@ def create_output_ray(centroid, ref_binary_image, spacing, margin=100, margin_ra
         #                               margin=margin, min_max=min_max,
         #                               margin_rad=margin_rad)
         output[..., 1] = define_cone(polar_cords, centroid, ref_binary_image, spacing, margin=margin,
-                                     margin_rad=margin_rad)
+                                     margin_rad=margin_rad, min_max_only=min_max_only)
         if target_centroid is not None:
             output[...,2] += define_cone(polar_cords, target_centroid, ref_binary_image, spacing, margin=margin,
-                                         margin_rad=margin_rad)
+                                         margin_rad=margin_rad, min_max_only=min_max_only)
     output[output>0] = 1
     return output
 
 
 def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurrence, spacing, margin=100,
-                margin_rad=np.deg2rad(1)):
+                margin_rad=np.deg2rad(2), min_max_only=False):
     '''
     :param polar_cords_base: polar coordinates from ablation_recurrence centroid to recurrence, come in [phi, theta]
     where theta ranges from 0 to pi and -0 to -pi
@@ -106,6 +107,7 @@ def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurren
     :param liver_recurrence: shape used to make output
     :param margin: how far would you like to look, in mm
     :param margin_rad: degrees of wiggle allowed, recommend 5 degrees (in radians)
+    :param min_max_only: should you only worry about min/max? Much faster if True, but a cross turns into a square
     :return:
     '''
     polar_cords_base = polar_cords_base.astype('float16')
@@ -142,7 +144,6 @@ def define_cone(polar_cords_base, centroid_of_ablation_recurrence,liver_recurren
     phi_differences = np.abs(phi_values.flatten()[:, None] - polar_cords_base[:, 0])
     difference = np.min(phi_differences, axis=-1)
     within_phi_mask = difference <= margin_rad
-    min_max_only = False
     if not min_max_only:
         theta_values_cone = cone_cords_base_reshaped[mask_indexes][within_phi_mask][...,2]
         theta_differences_in_mask = np.abs(theta_values_cone[:, None] - polar_cords_base[:, 1])
