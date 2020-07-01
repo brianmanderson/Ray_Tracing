@@ -61,7 +61,7 @@ def create_distance_field(image,origin, spacing=(0.975,0.975,5.0)):
 
 def create_output_ray(centroid, ref_binary_image, spacing, margin=100, margin_rad=np.deg2rad(5), target_centroid=None,
                       min_max_only=False):
-    labels = morphology.label(ref_binary_image, neighbors=4)  # Could have multiple recurrence sites
+    labels = morphology.label(ref_binary_image, connectivity=1)  # Could have multiple recurrence sites
     output = np.zeros(ref_binary_image.shape)
     output = np.expand_dims(output, axis=-1)
     if target_centroid is not None:
@@ -89,7 +89,7 @@ def create_output_ray(centroid, ref_binary_image, spacing, margin=100, margin_ra
         # output[..., 1] += define_cone(polar_cords, centroid, ref_binary_image, spacing,
         #                               margin=margin, min_max=min_max,
         #                               margin_rad=margin_rad)
-        output[..., 1] = define_cone(polar_cords, centroid, ref_binary_image, spacing, margin=margin,
+        output[..., 1] += define_cone(polar_cords, centroid, ref_binary_image, spacing, margin=margin,
                                      margin_rad=margin_rad, min_max_only=min_max_only)
         if target_centroid is not None:
             output[...,2] += define_cone(polar_cords, target_centroid, ref_binary_image, spacing, margin=margin,
