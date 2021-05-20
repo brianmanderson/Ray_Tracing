@@ -1,6 +1,6 @@
 __author__ = 'Brian M Anderson'
 # Created on 12/30/2019
-from Dicom_RT_and_Images_to_Mask.src.DicomRTTool import DicomReaderWriter, plot_scroll_Image, plt, np
+import numpy as np
 from skimage import morphology
 
 
